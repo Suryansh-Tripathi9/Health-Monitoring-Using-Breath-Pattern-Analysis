@@ -3,6 +3,68 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MicIcon, PlayIcon, PauseIcon, TrashIcon, CheckCircleIcon } from './Icons';
 
+/**
+ * Encodes an AudioBuffer into a 48kHz Mono Int16 PCM WAV Blob
+ */
+async function convertAudioBlobToWav(audioBlob, targetSampleRate = 48000) {
+  try {
+    const arrayBuffer = await audioBlob.arrayBuffer();
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return audioBlob;
+
+    const audioCtx = new AudioContextClass();
+    const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+    // Resample and mixdown to mono 48kHz
+    const offlineCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(
+      1,
+      Math.ceil(decodedBuffer.duration * targetSampleRate),
+      targetSampleRate
+    );
+
+    const source = offlineCtx.createBufferSource();
+    source.buffer = decodedBuffer;
+    source.connect(offlineCtx.destination);
+    source.start(0);
+
+    const renderedBuffer = await offlineCtx.startRendering();
+    const pcmData = renderedBuffer.getChannelData(0);
+
+    // Create 48kHz PCM WAV Header
+    const wavBuffer = new ArrayBuffer(44 + pcmData.length * 2);
+    const view = new DataView(wavBuffer);
+
+    function writeString(offset, str) {
+      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+    }
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + pcmData.length * 2, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM format
+    view.setUint16(22, 1, true); // Mono channel
+    view.setUint32(24, targetSampleRate, true);
+    view.setUint32(28, targetSampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeString(36, 'data');
+    view.setUint32(40, pcmData.length * 2, true);
+
+    // Write 16-bit PCM samples
+    for (let i = 0; i < pcmData.length; i++) {
+      const s = Math.max(-1, Math.min(1, pcmData[i]));
+      view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    }
+
+    return new Blob([wavBuffer], { type: 'audio/wav' });
+  } catch (err) {
+    console.warn('[AudioRecorder] WAV conversion fallback to raw blob:', err);
+    return audioBlob;
+  }
+}
+
 export default function AudioRecorder({ onAudioReady, onClearAudio, currentAudio }) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -35,15 +97,21 @@ export default function AudioRecorder({ onAudioReady, onClearAudio, currentAudio
         if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const url = URL.createObjectURL(audioBlob);
+      mediaRecorder.onstop = async () => {
+        const rawBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        
+        // Convert to 48kHz Mono PCM WAV Blob for 100% reliable librosa decoding
+        const wavBlob = await convertAudioBlobToWav(rawBlob, 48000);
+        const url = URL.createObjectURL(wavBlob);
         setAudioUrl(url);
+
+        const timeStr = new Date().toLocaleTimeString().replace(/:/g, '-');
+        const fileName = `Recorded_Audio_${timeStr}.wav`;
         
         onAudioReady({
-          blob: audioBlob,
+          blob: wavBlob,
           url: url,
-          name: `Recorded_Audio_${new Date().toLocaleTimeString().replace(/:/g, '-')}.webm`,
+          name: fileName,
           duration: `${recordingTime}s`,
           sourceType: 'Recorded Audio'
         });
@@ -152,7 +220,7 @@ export default function AudioRecorder({ onAudioReady, onClearAudio, currentAudio
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700 }}>
               <CheckCircleIcon size={20} className="text-emerald" />
-              <span>Audio Recording Ready</span>
+              <span>Audio Recording Ready (48kHz WAV)</span>
             </div>
             <span className="badge badge-primary">{recordingTime}s Recorded</span>
           </div>

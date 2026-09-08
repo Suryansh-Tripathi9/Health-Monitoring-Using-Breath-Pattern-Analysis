@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import AudioRecorder from './AudioRecorder';
 import AudioUploader from './AudioUploader';
 import { MicIcon, UploadIcon, LungsIcon, ActivityIcon, ArrowRightIcon, FileAudioIcon } from './Icons';
+import predictionService from '../services/predictionService';
 
 export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialPreset }) {
   const getInitialCategory = (preset) => {
@@ -14,14 +15,15 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
   const getInitialAudioData = (preset) => {
     if (!preset) return null;
     let name = 'Deep_Breathing_Sample.wav';
-    if (preset === 'breathing-shallow') name = 'Shallow_Breathing_Sample.wav';
-    if (preset === 'cough-heavy') name = 'Heavy_Cough_Sample.wav';
-    if (preset === 'cough-shallow') name = 'Shallow_Cough_Sample.wav';
+    let url = '/sample-breath-deep.wav';
+    if (preset === 'breathing-shallow') { name = 'Shallow_Breathing_Sample.wav'; url = '/sample-breath-shallow.wav'; }
+    if (preset === 'cough-heavy') { name = 'Heavy_Cough_Sample.wav'; url = '/sample-cough-heavy.wav'; }
+    if (preset === 'cough-shallow') { name = 'Shallow_Cough_Sample.wav'; url = '/sample-cough-shallow.wav'; }
     return {
       name: name,
-      size: '1.2 MB',
-      duration: '4.0s',
-      url: '/sample-breath.mp3',
+      size: '280 KB',
+      duration: '3.0s',
+      url: url,
       sourceType: 'Demo Audio Sample'
     };
   };
@@ -30,6 +32,13 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
   const [analysisType, setAnalysisType] = useState(() => initialPreset || 'breathing-deep');
   const [inputTab, setInputTab] = useState('record');
   const [audioData, setAudioData] = useState(() => getInitialAudioData(initialPreset));
+  const [backendStatus, setBackendStatus] = useState(null);
+
+  useEffect(() => {
+    predictionService.checkBackendHealth().then((info) => {
+      setBackendStatus(info);
+    });
+  }, []);
 
   const handleCategoryChange = (category) => {
     setAnalysisCategory(category);
@@ -42,9 +51,10 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
 
   const handleLoadDemoSample = (sampleType) => {
     let name = 'Deep_Breathing_Sample.wav';
-    if (sampleType === 'breathing-shallow') name = 'Shallow_Breathing_Sample.wav';
-    if (sampleType === 'cough-heavy') name = 'Heavy_Cough_Sample.wav';
-    if (sampleType === 'cough-shallow') name = 'Shallow_Cough_Sample.wav';
+    let url = '/sample-breath-deep.wav';
+    if (sampleType === 'breathing-shallow') { name = 'Shallow_Breathing_Sample.wav'; url = '/sample-breath-shallow.wav'; }
+    if (sampleType === 'cough-heavy') { name = 'Heavy_Cough_Sample.wav'; url = '/sample-cough-heavy.wav'; }
+    if (sampleType === 'cough-shallow') { name = 'Shallow_Cough_Sample.wav'; url = '/sample-cough-shallow.wav'; }
 
     setAnalysisType(sampleType);
     if (sampleType.startsWith('breathing')) {
@@ -55,9 +65,9 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
 
     setAudioData({
       name: name,
-      size: '1.2 MB',
-      duration: '4.0s',
-      url: '/sample-breath.mp3',
+      size: '280 KB',
+      duration: '3.0s',
+      url: url,
       sourceType: 'Demo Audio Sample'
     });
   };
@@ -77,6 +87,17 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
         <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', marginTop: '4px' }}>
           Select pattern category, record or upload an audio sample, and trigger AI estimation.
         </p>
+
+        {backendStatus && (
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '12px', padding: '6px 14px', borderRadius: '20px', background: backendStatus.status === 'healthy' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)', border: `1px solid ${backendStatus.status === 'healthy' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`, fontSize: '0.82rem', fontWeight: 600, color: backendStatus.status === 'healthy' ? '#10b981' : '#f59e0b' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: backendStatus.status === 'healthy' ? '#10b981' : '#f59e0b', display: 'inline-block' }}></span>
+            <span>
+              {backendStatus.status === 'healthy' 
+                ? `Live ML Model Connected: ${backendStatus.model?.filename} (${backendStatus.model?.inputFeatures} Features, 300 Trees)` 
+                : 'Offline Estimator Mode'}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Step 1: Select Type */}

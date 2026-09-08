@@ -1,82 +1,68 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import { CheckCircleIcon, AlertTriangleIcon, RefreshIcon, HomeIcon, InfoIcon } from './Icons';
 
 export default function ResultPage({ result, onAnalyseAnother, onBackHome }) {
-  const [demoOverride, setDemoOverride] = useState(null);
-
   if (!result) return null;
 
-  const currentOutcome = demoOverride || (result.prediction === 'healthy' ? 'healthy' : 'risk');
-  const isHealthy = currentOutcome === 'healthy';
-  const confidencePct = Math.round(result.confidence * 100);
-
+  const isPositive = result.prediction === 1 || result.label === 'Positive-associated';
+  const labelText = result.label || (isPositive ? 'Positive-associated' : 'Reference');
+  const percentage = result.percentage !== undefined ? result.percentage : (result.probability ? Math.round(result.probability * 10000) / 100 : (result.confidence ? Math.round(result.confidence * 100) : 50));
+  
   const formattedTypeMap = {
     'breathing-deep': 'Deep Breathing',
     'breathing-shallow': 'Shallow Breathing',
     'cough-heavy': 'Heavy Cough',
     'cough-shallow': 'Shallow Cough',
   };
-  const analysisTypeTitle = formattedTypeMap[result.analysisType] || result.analysisType || 'Respiratory Analysis';
+  const analysisTypeTitle = formattedTypeMap[result.analysisType] || result.analysisType || 'Breathing Pattern Analysis';
 
   return (
     <div className="result-container">
-      {/* Demo Evaluator Toggle Switch */}
-      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', padding: '8px 16px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-          Evaluator Demo Toggle:
-        </span>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button 
-            type="button" 
-            onClick={() => setDemoOverride('healthy')}
-            className={`btn-sm ${isHealthy ? 'btn-primary' : 'btn-secondary'}`}
-          >
-            Healthy Result
-          </button>
-          <button 
-            type="button" 
-            onClick={() => setDemoOverride('risk')}
-            className={`btn-sm ${!isHealthy ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ background: !isHealthy ? '#e11d48' : undefined }}
-          >
-            Risk Alert Result
-          </button>
+      {/* Model Verification Tag */}
+      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', padding: '10px 16px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '0.82rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
+            ⚡ Powered by breathing_random_forest.pkl (Random Forest, 512 Features)
+          </span>
         </div>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          Spectrogram Shape: [128, 512]
+        </span>
       </div>
 
       {/* Outcome Card */}
-      <div className={`clean-card result-card ${isHealthy ? 'result-healthy' : 'result-risk'}`}>
+      <div className={`clean-card result-card ${!isPositive ? 'result-healthy' : 'result-risk'}`}>
         <div>
-          {isHealthy ? (
+          {!isPositive ? (
             <CheckCircleIcon size={56} className="text-emerald" />
           ) : (
             <AlertTriangleIcon size={56} className="text-rose" />
           )}
         </div>
 
-        <h1 className="result-headline">
-          {isHealthy ? 'Healthy Pattern Detected' : 'Potential Risk Detected'}
+        <h1 className="result-headline" style={{ fontSize: '1.75rem', fontWeight: 800 }}>
+          {labelText}
         </h1>
 
-        <p style={{ fontSize: '1rem', color: 'var(--text-muted)', maxWidth: '520px' }}>
-          {isHealthy
-            ? 'Acoustic waveform metrics align with standard healthy respiratory parameters.'
-            : 'Acoustic spectral variances suggest irregular breathing or cough airflow patterns.'}
+        <p style={{ fontSize: '0.98rem', color: 'var(--text-muted)', maxWidth: '560px', textAlign: 'center' }}>
+          {result.message || (isPositive 
+            ? 'The audio pattern is associated with the positive class in the dataset.'
+            : 'The audio pattern is associated with the reference class in the dataset.')}
         </p>
 
-        <div className="confidence-box">
-          <div className="confidence-row">
-            <span>Prediction Confidence</span>
-            <span style={{ fontSize: '1.2rem', fontWeight: 800 }}>{confidencePct}%</span>
+        <div className="confidence-box" style={{ marginTop: '1rem', width: '100%', maxWidth: '420px' }}>
+          <div className="confidence-row" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Model Score (Positive Probability)</span>
+            <span style={{ fontSize: '1.2rem', fontWeight: 800, color: isPositive ? '#e11d48' : '#10b981' }}>{percentage}%</span>
           </div>
           <div style={{ height: '8px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
             <div 
               style={{ 
                 height: '100%', 
-                width: `${confidencePct}%`, 
-                background: isHealthy ? '#10b981' : '#e11d48' 
+                width: `${Math.min(100, Math.max(0, percentage))}%`, 
+                background: isPositive ? '#e11d48' : '#10b981' 
               }}
             ></div>
           </div>
@@ -99,9 +85,9 @@ export default function ResultPage({ result, onAnalyseAnother, onBackHome }) {
           </div>
 
           <div className="summary-item">
-            <span className="summary-label">Prediction Status</span>
-            <span className={`summary-value ${isHealthy ? 'text-emerald' : 'text-rose'}`}>
-              {isHealthy ? 'Healthy Pattern' : 'Potential Risk'}
+            <span className="summary-label">Prediction Label</span>
+            <span className={`summary-value ${!isPositive ? 'text-emerald' : 'text-rose'}`}>
+              {labelText}
             </span>
           </div>
 
@@ -116,7 +102,11 @@ export default function ResultPage({ result, onAnalyseAnother, onBackHome }) {
       <div className="disclaimer-box">
         <InfoIcon size={18} className="flex-shrink-0" style={{ marginTop: '2px' }} />
         <span>
-          <strong>Notice:</strong> This result is generated by an academic prototype and should not be used for medical diagnosis. Always consult a licensed medical professional for clinical evaluations.
+          <strong>Disclaimer:</strong> {result.disclaimer || 'This is a research prototype and not a medical diagnostic system.'}
+          <br />
+          <span style={{ fontSize: '0.8rem', opacity: 0.9 }}>
+            Note: This result represents the model's association with health-status labels in the research dataset. It is not a medical diagnosis.
+          </span>
         </span>
       </div>
 

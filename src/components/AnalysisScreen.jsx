@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Loader2, Circle, Activity, Cpu } from 'lucide-react';
-import mockPredictionService from '../services/predictionService';
+import predictionService from '../services/predictionService';
 
 export default function AnalysisScreen({ audioSample, onAnalysisComplete }) {
   const [activeStep, setActiveStep] = useState(0);
@@ -23,7 +23,7 @@ export default function AnalysisScreen({ audioSample, onAnalysisComplete }) {
     // Call prediction service concurrently
     let isSubscribed = true;
 
-    mockPredictionService.predictAudio({
+    predictionService.predictAudio({
       audioSource: audioSample?.audioSource,
       analysisType: audioSample?.analysisType || 'breathing-deep'
     }).then((result) => {

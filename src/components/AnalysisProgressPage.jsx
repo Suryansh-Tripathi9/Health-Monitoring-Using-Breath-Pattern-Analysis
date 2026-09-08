@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import mockPredictionService from '../services/predictionService';
+import predictionService from '../services/predictionService';
 import { CheckCircleIcon } from './Icons';
 
 const STEPS = [
@@ -18,7 +18,7 @@ export default function AnalysisProgressPage({ analysisParams, onAnalysisComplet
   useEffect(() => {
     let isMounted = true;
 
-    mockPredictionService.predictAudio(analysisParams)
+    predictionService.predictAudio(analysisParams)
       .then((res) => {
         if (isMounted) setPredictionResult(res);
       })
