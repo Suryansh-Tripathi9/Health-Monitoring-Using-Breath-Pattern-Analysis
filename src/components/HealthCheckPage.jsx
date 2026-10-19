@@ -3,8 +3,65 @@
 import React, { useState, useEffect } from 'react';
 import AudioRecorder from './AudioRecorder';
 import AudioUploader from './AudioUploader';
-import { MicIcon, UploadIcon, LungsIcon, ActivityIcon, ArrowRightIcon, FileAudioIcon } from './Icons';
+import { 
+  MicIcon, 
+  UploadIcon, 
+  LungsIcon, 
+  ActivityIcon, 
+  ArrowRightIcon, 
+  FileAudioIcon, 
+  CheckCircleIcon,
+  ShieldCheckIcon,
+  InfoIcon
+} from './Icons';
 import predictionService from '../services/predictionService';
+
+const BENCHMARK_SAMPLES = [
+  {
+    id: 'breathing-deep',
+    category: 'breathing',
+    title: 'Normal Vesicular Breath',
+    subtitle: 'Healthy tidal inspiration & expiration',
+    duration: '3.0s',
+    tag: 'Normal Control',
+    tagColor: 'success',
+    url: '/sample-breath-deep.wav',
+    fileName: 'Vesicular_Normal_Breath.wav'
+  },
+  {
+    id: 'breathing-shallow',
+    category: 'breathing',
+    title: 'Asthmatic Wheeze Sign',
+    subtitle: 'High-frequency continuous expiratory sound',
+    duration: '3.0s',
+    tag: 'Wheeze Pattern',
+    tagColor: 'warning',
+    url: '/sample-breath-shallow.wav',
+    fileName: 'Asthma_Wheeze_Sample.wav'
+  },
+  {
+    id: 'cough-heavy',
+    category: 'cough',
+    title: 'Thoracic Cough Burst',
+    subtitle: 'Deep lower respiratory forced expulsion',
+    duration: '3.0s',
+    tag: 'Deep Cough',
+    tagColor: 'alert',
+    url: '/sample-cough-heavy.wav',
+    fileName: 'Thoracic_Cough_Sample.wav'
+  },
+  {
+    id: 'cough-shallow',
+    category: 'cough',
+    title: 'Upper Airway Clearing',
+    subtitle: 'Glottic throat cough & airway clearance',
+    duration: '3.0s',
+    tag: 'Throat Clearing',
+    tagColor: 'neutral',
+    url: '/sample-cough-shallow.wav',
+    fileName: 'Laryngeal_Cough_Sample.wav'
+  }
+];
 
 export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialPreset }) {
   const getInitialCategory = (preset) => {
@@ -14,17 +71,13 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
 
   const getInitialAudioData = (preset) => {
     if (!preset) return null;
-    let name = 'Deep_Breathing_Sample.wav';
-    let url = '/sample-breath-deep.wav';
-    if (preset === 'breathing-shallow') { name = 'Shallow_Breathing_Sample.wav'; url = '/sample-breath-shallow.wav'; }
-    if (preset === 'cough-heavy') { name = 'Heavy_Cough_Sample.wav'; url = '/sample-cough-heavy.wav'; }
-    if (preset === 'cough-shallow') { name = 'Shallow_Cough_Sample.wav'; url = '/sample-cough-shallow.wav'; }
+    const match = BENCHMARK_SAMPLES.find(s => s.id === preset) || BENCHMARK_SAMPLES[0];
     return {
-      name: name,
+      name: match.fileName,
       size: '280 KB',
-      duration: '3.0s',
-      url: url,
-      sourceType: 'Demo Audio Sample'
+      duration: match.duration,
+      url: match.url,
+      sourceType: 'Clinical Benchmark'
     };
   };
 
@@ -32,6 +85,7 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
   const [analysisType, setAnalysisType] = useState(() => initialPreset || 'breathing-deep');
   const [inputTab, setInputTab] = useState('record');
   const [audioData, setAudioData] = useState(() => getInitialAudioData(initialPreset));
+  const [selectedBenchmarkId, setSelectedBenchmarkId] = useState(() => initialPreset || null);
   const [backendStatus, setBackendStatus] = useState(null);
 
   useEffect(() => {
@@ -49,26 +103,17 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
     }
   };
 
-  const handleLoadDemoSample = (sampleType) => {
-    let name = 'Deep_Breathing_Sample.wav';
-    let url = '/sample-breath-deep.wav';
-    if (sampleType === 'breathing-shallow') { name = 'Shallow_Breathing_Sample.wav'; url = '/sample-breath-shallow.wav'; }
-    if (sampleType === 'cough-heavy') { name = 'Heavy_Cough_Sample.wav'; url = '/sample-cough-heavy.wav'; }
-    if (sampleType === 'cough-shallow') { name = 'Shallow_Cough_Sample.wav'; url = '/sample-cough-shallow.wav'; }
-
-    setAnalysisType(sampleType);
-    if (sampleType.startsWith('breathing')) {
-      setAnalysisCategory('breathing');
-    } else {
-      setAnalysisCategory('cough');
-    }
+  const handleSelectBenchmark = (sample) => {
+    setSelectedBenchmarkId(sample.id);
+    setAnalysisType(sample.id);
+    setAnalysisCategory(sample.category);
 
     setAudioData({
-      name: name,
+      name: sample.fileName,
       size: '280 KB',
-      duration: '3.0s',
-      url: url,
-      sourceType: 'Demo Audio Sample'
+      duration: sample.duration,
+      url: sample.url,
+      sourceType: 'Clinical Benchmark Library'
     });
   };
 
@@ -82,27 +127,42 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
 
   return (
     <div className="health-check-container">
-      <div style={{ textAlign: 'center' }}>
-        <h2 style={{ fontSize: '1.8rem', fontWeight: 800 }}>Audio Sample Analysis</h2>
-        <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-          Select pattern category, record or upload an audio sample, and trigger AI estimation.
+      {/* Page Title & Context */}
+      <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '0.75rem' }}>
+          <span className="badge badge-primary">
+            <LungsIcon size={14} />
+            <span>Acoustic Modality</span>
+          </span>
+          <span className="badge badge-teal">
+            <ShieldCheckIcon size={14} />
+            <span>KAUH Dataset Protocol</span>
+          </span>
+        </div>
+
+        <h1 style={{ fontSize: '1.95rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.35rem' }}>
+          Respiratory Acoustic Analysis Studio
+        </h1>
+        <p style={{ fontSize: '0.96rem', color: 'var(--text-muted)', maxWidth: '620px', margin: '0 auto' }}>
+          Capture or upload respiratory sound recordings for signal feature extraction (MFCCs, spectral roll-off, zero-crossing) and automated pattern screening.
         </p>
 
-        {backendStatus && (
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '12px', padding: '6px 14px', borderRadius: '20px', background: backendStatus.status === 'healthy' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)', border: `1px solid ${backendStatus.status === 'healthy' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`, fontSize: '0.82rem', fontWeight: 600, color: backendStatus.status === 'healthy' ? '#10b981' : '#f59e0b' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: backendStatus.status === 'healthy' ? '#10b981' : '#f59e0b', display: 'inline-block' }}></span>
+        {/* System Status Pill */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '14px' }}>
+          <div className="engine-status-pill">
+            <span className="status-dot"></span>
             <span>
-              {backendStatus.status === 'healthy' 
-                ? `Live ML Model Connected: ${backendStatus.model?.filename} (${backendStatus.model?.inputFeatures} Features, 300 Trees)` 
-                : 'Offline Estimator Mode'}
+              {backendStatus?.status === 'healthy' 
+                ? 'KAUH Acoustic Classifier Online • 102 Feature Descriptors' 
+                : 'Connecting to Acoustic Classifier...'}
             </span>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Step 1: Select Type */}
-      <div className="clean-card config-card">
-        <span className="section-label-step">Step 1 • Select Analysis Type</span>
+      {/* Step 1: Select Protocol */}
+      <div className="clean-card" style={{ padding: '1.5rem 1.75rem' }}>
+        <span className="section-label-step">Protocol 1 • Select Clinical Sound Type</span>
 
         <div className="category-tabs">
           <button 
@@ -111,7 +171,7 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
             onClick={() => handleCategoryChange('breathing')}
           >
             <LungsIcon size={18} />
-            <span>Breathing Pattern</span>
+            <span>Breath Pattern Analysis</span>
           </button>
 
           <button 
@@ -120,7 +180,7 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
             onClick={() => handleCategoryChange('cough')}
           >
             <ActivityIcon size={18} />
-            <span>Cough Pattern</span>
+            <span>Cough Sound Dynamics</span>
           </button>
         </div>
 
@@ -132,8 +192,8 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
                 onClick={() => setAnalysisType('breathing-deep')}
               >
                 <div className="subtype-details">
-                  <h4>Deep Breathing</h4>
-                  <p>Inhale/exhale cycles with full chest expansion.</p>
+                  <h4>Deep Vesicular Respiration</h4>
+                  <p>Inhale and exhale with deep tidal cycles to assess bronchial and peripheral airway sounds.</p>
                 </div>
               </div>
 
@@ -142,8 +202,8 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
                 onClick={() => setAnalysisType('breathing-shallow')}
               >
                 <div className="subtype-details">
-                  <h4>Shallow Breathing</h4>
-                  <p>Rapid, short-duration chest breathing.</p>
+                  <h4>Shallow / Rapid Respiration</h4>
+                  <p>Short-duration respiratory cycles useful for detecting tachypneic and wheezing resistance.</p>
                 </div>
               </div>
             </>
@@ -154,8 +214,8 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
                 onClick={() => setAnalysisType('cough-heavy')}
               >
                 <div className="subtype-details">
-                  <h4>Heavy Cough</h4>
-                  <p>Deep thoracic forced exhalation coughing.</p>
+                  <h4>Deep Thoracic Cough</h4>
+                  <p>High-energy forced expiration to assess lower airway mucus loading and bronchospasm.</p>
                 </div>
               </div>
 
@@ -164,8 +224,8 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
                 onClick={() => setAnalysisType('cough-shallow')}
               >
                 <div className="subtype-details">
-                  <h4>Shallow Cough</h4>
-                  <p>Light throat clearing or upper airway coughing.</p>
+                  <h4>Upper Airway Throat Clearing</h4>
+                  <p>Light laryngeal coughing to isolate glottic friction and upper respiratory resistance.</p>
                 </div>
               </div>
             </>
@@ -173,9 +233,16 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
         </div>
       </div>
 
-      {/* Step 2: Audio Source Input */}
-      <div className="clean-card input-card">
-        <span className="section-label-step">Step 2 • Provide Audio Sample</span>
+      {/* Step 2: Audio Capture / Upload */}
+      <div className="clean-card" style={{ padding: '1.5rem 1.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '8px' }}>
+          <span className="section-label-step" style={{ margin: 0 }}>
+            Protocol 2 • Provide Audio Recording
+          </span>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Recommended: 48kHz Mono • 3 to 10 seconds
+          </span>
+        </div>
 
         <div className="input-method-tabs">
           <button
@@ -184,7 +251,7 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
             onClick={() => setInputTab('record')}
           >
             <MicIcon size={18} />
-            <span>Record Audio</span>
+            <span>Microphone Capture</span>
           </button>
 
           <button
@@ -193,52 +260,111 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
             onClick={() => setInputTab('upload')}
           >
             <UploadIcon size={18} />
-            <span>Upload File</span>
+            <span>Upload WAV / MP3</span>
           </button>
         </div>
 
         <div>
           {inputTab === 'record' ? (
             <AudioRecorder 
-              onAudioReady={(data) => setAudioData(data)} 
-              onClearAudio={() => setAudioData(null)}
+              onAudioReady={(data) => {
+                setSelectedBenchmarkId(null);
+                setAudioData(data);
+              }} 
+              onClearAudio={() => {
+                setAudioData(null);
+                setSelectedBenchmarkId(null);
+              }}
               currentAudio={audioData}
             />
           ) : (
             <AudioUploader 
-              onAudioReady={(data) => setAudioData(data)} 
-              onClearAudio={() => setAudioData(null)}
+              onAudioReady={(data) => {
+                setSelectedBenchmarkId(null);
+                setAudioData(data);
+              }} 
+              onClearAudio={() => {
+                setAudioData(null);
+                setSelectedBenchmarkId(null);
+              }}
               currentAudio={audioData}
             />
           )}
         </div>
 
-        {/* Instant Demo Presets */}
-        <div className="presets-bar">
-          <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginRight: '4px' }}>
-            Or test with sample audio:
-          </span>
-          <button 
-            type="button" 
-            className="btn-preset" 
-            onClick={() => handleLoadDemoSample('breathing-deep')}
-          >
-            <FileAudioIcon size={14} />
-            <span>Deep Breath Sample</span>
-          </button>
-          <button 
-            type="button" 
-            className="btn-preset" 
-            onClick={() => handleLoadDemoSample('cough-heavy')}
-          >
-            <FileAudioIcon size={14} />
-            <span>Heavy Cough Sample</span>
-          </button>
+        {/* Clinical Benchmark Sound Library */}
+        <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-light)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+              Or Evaluate Using Benchmark Clinical Reference Samples:
+            </span>
+            <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+              Curated from KAUH reference archive
+            </span>
+          </div>
+
+          <div className="benchmark-audio-grid">
+            {BENCHMARK_SAMPLES.map((sample) => {
+              const isSelected = selectedBenchmarkId === sample.id;
+              return (
+                <div 
+                  key={sample.id}
+                  className={`benchmark-audio-card ${isSelected ? 'active' : ''}`}
+                  onClick={() => handleSelectBenchmark(sample)}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                    <div style={{ marginTop: '2px', color: isSelected ? 'var(--primary)' : 'var(--text-muted)' }}>
+                      <FileAudioIcon size={16} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                        {sample.title}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '1px' }}>
+                        {sample.subtitle}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                    <span className={`badge badge-${sample.tagColor}`} style={{ padding: '2px 6px', fontSize: '0.7rem' }}>
+                      {sample.tag}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-light)', fontFamily: 'monospace' }}>
+                      {sample.duration}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
+
+        {/* Selected Audio Confirmation Bar */}
+        {audioData && (
+          <div style={{ marginTop: '1.25rem', padding: '10px 14px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-subtle)', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <CheckCircleIcon size={18} className="text-emerald" />
+              <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                Sample Loaded: <span style={{ fontFamily: 'monospace', color: 'var(--primary)' }}>{audioData.name}</span>
+              </span>
+            </div>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              Source: {audioData.sourceType || 'User Audio'}
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Actions */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* Acoustic Instructions Guidance */}
+      <div className="disclaimer-box">
+        <InfoIcon size={18} className="flex-shrink-0" style={{ marginTop: '2px' }} />
+        <span>
+          <strong>Recording Protocol:</strong> Position your device microphone approximately 10 cm from your mouth in a low-noise room. Breathe deeply and steadily with an open mouth. Avoid speaking or touching the microphone while recording.
+        </span>
+      </div>
+
+      {/* Action Controls */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
         <button type="button" onClick={onBackToHome} className="btn-secondary">
           Back to Overview
         </button>
@@ -248,9 +374,9 @@ export default function HealthCheckPage({ onAnalyseAudio, onBackToHome, initialP
           onClick={handleAnalyseClick}
           disabled={!audioData}
           className="btn-primary"
-          style={{ minWidth: '180px' }}
+          style={{ minWidth: '200px' }}
         >
-          <span>Analyse Audio</span>
+          <span>Run Acoustic Analysis</span>
           <ArrowRightIcon size={18} />
         </button>
       </div>

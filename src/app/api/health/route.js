@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const mlServiceUrl = (process.env.ML_SERVICE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
-  let mlServiceStatus = { status: 'down', model: 'breathing_random_forest' };
+  let mlServiceStatus = { status: 'down', model: 'kauh_breath_pattern_rf', features: 102 };
 
   try {
     const res = await fetch(`${mlServiceUrl}/health`, { cache: 'no-store' });

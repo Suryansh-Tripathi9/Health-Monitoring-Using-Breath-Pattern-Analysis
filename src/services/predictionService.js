@@ -101,6 +101,61 @@ export const predictionService = {
       console.error('[predictionService Error]:', err);
       throw err;
     }
+  },
+
+  /**
+   * Analyzes 10 E-Nose gas sensor features via POST /api/predict/enose
+   * 
+   * @param {Array<number>} features - Array of 10 numeric gas sensor features
+   * @returns {Promise<Object>} Formatted prediction result from E-nose Random Forest model
+   */
+  async predictEnose(features) {
+    console.log('[predictionService] Sending 10 E-nose gas sensor features for inference:', features);
+
+    if (!Array.isArray(features) || features.length !== 10) {
+      throw new Error('E-nose analysis requires exactly 10 numerical feature values.');
+    }
+
+    try {
+      const response = await fetch('/api/predict/enose', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ features }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success !== false) {
+        return {
+          ...data,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          modality: 'enose'
+        };
+      } else {
+        throw new Error(data.error || 'E-nose prediction request failed.');
+      }
+    } catch (err) {
+      console.error('[predictionService E-Nose Error]:', err);
+      throw err;
+    }
+  },
+
+  /**
+   * Fetches E-Nose dataset presets from /api/enose/presets
+   */
+  async fetchEnosePresets() {
+    try {
+      const response = await fetch('/api/enose/presets');
+      if (response.ok) {
+        const data = await response.json();
+        return data.presets || [];
+      }
+    } catch (err) {
+      console.warn('[predictionService] Failed to fetch E-nose presets:', err);
+    }
+    return [];
   }
 };
 

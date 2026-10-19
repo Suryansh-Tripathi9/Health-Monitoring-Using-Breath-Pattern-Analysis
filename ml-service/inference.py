@@ -1,17 +1,46 @@
 import os
+import json
 import joblib
 import numpy as np
 import librosa
-import soundfile as sf
 from scipy.signal import butter, sosfilt
-import scipy.io.wavfile as wavfile
 
-# Global model instance cached in memory
 _MODEL_INSTANCE = None
+_CONDITION_MAPPING = None
+
+# ============================================================
+# KAUH MODEL CONFIGURATION
+# ============================================================
+TARGET_SR = 4000
+LOW_FREQ = 20
+HIGH_FREQ = 1800
+
+N_MELS = 64
+N_FFT = 512
+HOP_LENGTH = 128
+
+DEFAULT_CONDITION_MAPPING = {
+    "Normal": [
+        "Normal/reference respiratory pattern"
+    ],
+    "Wheeze-dominant": [
+        "Asthma",
+        "COPD"
+    ],
+    "Crackle-dominant": [
+        "Heart Failure",
+        "Pneumonia",
+        "Lung Fibrosis",
+        "BRON",
+        "Pleural Effusion"
+    ]
+}
+
 
 def get_model_path():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_dir, "models", "breathing_random_forest.pkl")
+    return os.path.join(base_dir, "models", "kauh_breath_pattern_rf.pkl")
+
 
 def load_model():
     global _MODEL_INSTANCE
@@ -20,105 +49,141 @@ def load_model():
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at: {model_path}")
         _MODEL_INSTANCE = joblib.load(model_path)
+        print(f"[ML Service] Loaded KAUH model: {model_path}")
     return _MODEL_INSTANCE
 
-def load_audio_safely(audio_input, target_sr=48000):
-    """Safely loads audio input into float32 48kHz mono numpy array"""
-    try:
-        y, sr = librosa.load(audio_input, sr=target_sr, mono=True)
-        if len(y) > 0:
-            return y
-    except Exception as e1:
-        print(f"[inference.py] librosa load warning: {e1}, trying soundfile fallback...")
-        try:
-            data, sr = sf.read(audio_input)
-            if len(data.shape) > 1:
-                data = np.mean(data, axis=1)
-            if sr != target_sr:
-                data = librosa.resample(data, orig_sr=sr, target_sr=target_sr)
-            return data.astype(np.float32)
-        except Exception as e2:
-            print(f"[inference.py] soundfile load warning: {e2}, trying scipy wavfile fallback...")
+
+def load_condition_mapping():
+    global _CONDITION_MAPPING
+    if _CONDITION_MAPPING is None:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        mapping_path = os.path.join(base_dir, "models", "pattern_condition_mapping.json")
+        if os.path.exists(mapping_path):
             try:
-                sr, data = wavfile.read(audio_input)
-                if data.dtype == np.int16:
-                    data = data.astype(np.float32) / 32768.0
-                elif data.dtype == np.int32:
-                    data = data.astype(np.float32) / 2147483648.0
-                if len(data.shape) > 1:
-                    data = np.mean(data, axis=1)
-                if sr != target_sr:
-                    data = librosa.resample(data, orig_sr=sr, target_sr=target_sr)
-                return data.astype(np.float32)
-            except Exception as e3:
-                raise ValueError(f"Unable to parse audio format ({e3})")
+                with open(mapping_path, "r", encoding="utf-8") as f:
+                    _CONDITION_MAPPING = json.load(f)
+            except Exception as e:
+                print(f"[ML Service Warning] Failed to load condition mapping JSON: {e}")
+                _CONDITION_MAPPING = DEFAULT_CONDITION_MAPPING
+        else:
+            _CONDITION_MAPPING = DEFAULT_CONDITION_MAPPING
+    return _CONDITION_MAPPING
+
+
+def load_audio(audio_input):
+    """Loads audio input into float32 4000Hz mono numpy array"""
+    audio, sr = librosa.load(audio_input, sr=TARGET_SR, mono=True)
+    if len(audio) == 0:
+        raise ValueError("Audio signal is empty.")
+    return audio, sr
+
+
+def bandpass_filter(audio, sr, low_freq, high_freq):
+    """4th-order Butterworth bandpass filter (20Hz - 1800Hz)"""
+    sos = butter(4, [low_freq, high_freq], btype="bandpass", fs=sr, output="sos")
+    return sosfilt(sos, audio)
+
+
+def extract_richer_features(file_path):
+    """
+    Extracts exactly 102 audio features based on the KAUH training pipeline:
+    1. 20 MFCC coefficients (mean + std = 40)
+    2. 20 MFCC delta coefficients (mean + std = 40)
+    3. Spectral centroid (mean + std = 2)
+    4. Spectral bandwidth (mean + std = 2)
+    5. Spectral rolloff roll_percent=0.85 (mean + std = 2)
+    6. Zero crossing rate (mean + std = 2)
+    7. RMS energy (mean + std = 2)
+    8. Spectral contrast n_bands=5 fmin=20 (mean + std = 12)
+    Total features = 102
+    """
+    audio, sr = load_audio(file_path)
+    audio = bandpass_filter(audio, sr, LOW_FREQ, HIGH_FREQ)
+
+    features = []
+
+    # 1. MFCCs (20 coefficients -> 20 mean + 20 std = 40)
+    mfcc = librosa.feature.mfcc(
+        y=audio,
+        sr=sr,
+        n_mfcc=20,
+        n_fft=N_FFT,
+        hop_length=HOP_LENGTH,
+        n_mels=N_MELS
+    )
+    features.extend(np.mean(mfcc, axis=1))
+    features.extend(np.std(mfcc, axis=1))
+
+    # 2. MFCC Delta (20 mean + 20 std = 40)
+    mfcc_delta = librosa.feature.delta(mfcc)
+    features.extend(np.mean(mfcc_delta, axis=1))
+    features.extend(np.std(mfcc_delta, axis=1))
+
+    # 3. Spectral Features (5 features -> 5 mean + 5 std = 10)
+    spectral_centroid = librosa.feature.spectral_centroid(
+        y=audio, sr=sr, n_fft=N_FFT, hop_length=HOP_LENGTH
+    )
+    spectral_bandwidth = librosa.feature.spectral_bandwidth(
+        y=audio, sr=sr, n_fft=N_FFT, hop_length=HOP_LENGTH
+    )
+    spectral_rolloff = librosa.feature.spectral_rolloff(
+        y=audio, sr=sr, n_fft=N_FFT, hop_length=HOP_LENGTH, roll_percent=0.85
+    )
+    zcr = librosa.feature.zero_crossing_rate(
+        audio, frame_length=N_FFT, hop_length=HOP_LENGTH
+    )
+    rms = librosa.feature.rms(
+        y=audio, frame_length=N_FFT, hop_length=HOP_LENGTH
+    )
+
+    for feat in [spectral_centroid, spectral_bandwidth, spectral_rolloff, zcr, rms]:
+        features.append(np.mean(feat))
+        features.append(np.std(feat))
+
+    # 4. Spectral Contrast (6 subbands -> 6 mean + 6 std = 12)
+    contrast = librosa.feature.spectral_contrast(
+        y=audio,
+        sr=sr,
+        n_fft=N_FFT,
+        hop_length=HOP_LENGTH,
+        n_bands=5,
+        fmin=20
+    )
+    features.extend(np.mean(contrast, axis=1))
+    features.extend(np.std(contrast, axis=1))
+
+    features = np.asarray(features, dtype=np.float32)
+
+    if len(features) != 102:
+        raise ValueError(f"Feature vector dimension mismatch: expected 102, got {len(features)}")
+
+    return features
+
 
 def extract_features_and_predict(audio_input):
     """
-    Executes the exact 8-step ML input preprocessing pipeline:
-    1. Load audio (mono=True, sr=48000 Hz)
-    2. Butterworth Bandpass filter (order=4, 80Hz - 8000Hz, sosfilt)
-    3. Mel Spectrogram (sr=48000, n_mels=128, n_fft=2048, hop_length=512, power=2.0)
-    4. Convert to dB (librosa.power_to_db, ref=np.max)
-    5. Fixed size 128 x 512 (clip or pad with -80 dB)
-    6. Normalize: clip((mel_db + 80) / 80, 0, 1)
-    7. Extract 512 features: [mean (128), std (128), max (128), min (128)]
-    8. Random Forest model prediction probability
+    Runs KAUH feature extraction and executes Random Forest inference.
+    Returns pattern string directly, class probability, and dataset-derived condition associations.
     """
     model = load_model()
+    condition_map = load_condition_mapping()
 
-    # Step 1: Load audio
-    y = load_audio_safely(audio_input, target_sr=48000)
-    if len(y) == 0:
-        raise ValueError("Audio signal is empty.")
-
-    # Step 2: Bandpass filter
-    sos = butter(4, [80, 8000], btype='bandpass', fs=48000, output='sos')
-    filtered_y = sosfilt(sos, y)
-
-    # Step 3: Mel Spectrogram
-    mel = librosa.feature.melspectrogram(
-        y=filtered_y, sr=48000, n_mels=128, n_fft=2048, hop_length=512, power=2.0
-    )
-
-    # Step 4: Convert to dB
-    mel_db = librosa.power_to_db(mel, ref=np.max)
-
-    # Step 5: Fixed size (128 x 512), padding with -80 dB
-    target_frames = 512
-    n_frames = mel_db.shape[1]
-
-    if n_frames >= target_frames:
-        mel_fixed = mel_db[:, :target_frames]
-    else:
-        pad_width = target_frames - n_frames
-        mel_fixed = np.pad(mel_db, ((0, 0), (0, pad_width)), mode='constant', constant_values=-80.0)
-
-    # Step 6: Normalize
-    mel_norm = np.clip((mel_fixed + 80.0) / 80.0, 0.0, 1.0)
-
-    # Step 7: Extract 512 numerical features in EXACT order [mean, std, max, min]
-    mean_feats = np.mean(mel_norm, axis=1)  # 128
-    std_feats = np.std(mel_norm, axis=1)    # 128
-    max_feats = np.max(mel_norm, axis=1)    # 128
-    min_feats = np.min(mel_norm, axis=1)    # 128
-
-    features = np.concatenate([mean_feats, std_feats, max_feats, min_feats])
-    if len(features) != 512:
-        raise ValueError(f"Feature vector dimension mismatch: expected 512, got {len(features)}")
-
-    # Step 8: Predict using Random Forest
+    features = extract_richer_features(audio_input)
     features_2d = features.reshape(1, -1)
+
     probabilities = model.predict_proba(features_2d)[0]
-    
-    # Class 1 probability
-    prob_class_1 = float(probabilities[1]) if len(probabilities) > 1 else float(probabilities[0])
-    prediction = 1 if prob_class_1 >= 0.5 else 0
+    predicted_index = int(np.argmax(probabilities))
+
+    pattern = str(model.classes_[predicted_index])
+    confidence = float(probabilities[predicted_index])
+
+    possible_conditions = condition_map.get(pattern, ["Under investigation"])
 
     return {
-        "prediction": prediction,
-        "probability": round(prob_class_1, 4),
-        "percentage": round(prob_class_1 * 100, 2),
-        "spectrogram_shape": [128, 512],
-        "n_features": 512
+        "prediction": pattern,
+        "pattern": pattern,
+        "probability": round(confidence, 4),
+        "percentage": round(confidence * 100, 2),
+        "n_features": 102,
+        "possible_conditions": possible_conditions
     }

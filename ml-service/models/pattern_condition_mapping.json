@@ -1,0 +1,16 @@
+{
+  "Normal": [
+    "Normal/reference respiratory pattern"
+  ],
+  "Wheeze-dominant": [
+    "Asthma",
+    "COPD"
+  ],
+  "Crackle-dominant": [
+    "Heart Failure",
+    "Pneumonia",
+    "Lung Fibrosis",
+    "BRON",
+    "Pleural Effusion"
+  ]
+}

@@ -15,7 +15,7 @@ import numpy as np
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'breathing_random_forest.pkl')
+MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'breathing_random_forest_full_data.pkl')
 
 def load_model():
     import joblib

@@ -9,7 +9,9 @@ export async function GET() {
   return new Promise((resolve) => {
     const script = `
 import joblib, json, numpy as np, os
-path = os.path.join(os.getcwd(), 'breathing_random_forest.pkl')
+path = os.path.join(os.getcwd(), 'ml-service', 'models', 'kauh_breath_pattern_rf.pkl')
+if not os.path.exists(path):
+    path = os.path.join(os.getcwd(), 'kauh_breath_pattern_rf.pkl')
 if not os.path.exists(path):
     print(json.dumps({"error": "Model file missing"}))
     exit(0)
@@ -19,12 +21,12 @@ top_idx = np.argsort(fi)[::-1][:15].tolist()
 top_imp = [round(float(fi[i]), 6) for i in top_idx]
 
 res = {
-    "totalFeatures": 512,
+    "totalFeatures": 102,
     "featureBreakdown": {
-        "melSpectrogramMean": "Features 0 - 127",
-        "melSpectrogramStd": "Features 128 - 255",
-        "melSpectrogramMax": "Features 256 - 383",
-        "melSpectrogramMin": "Features 384 - 511"
+        "mfccMeanStd": "Features 0 - 39",
+        "mfccDeltaMeanStd": "Features 40 - 79",
+        "spectralFeatures": "Features 80 - 89",
+        "spectralContrast": "Features 90 - 101"
     },
     "topFeatureIndices": top_idx,
     "topFeatureImportances": top_imp
